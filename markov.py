@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import random
 
-# TODO: make this work on generators
 def ngrams(gen, n=1, eof=None):
     last = ()
     for out in gen:
