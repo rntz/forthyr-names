@@ -118,4 +118,4 @@ def from_file(filename, n=1):
         m.learn_seq(mkit())
     return m
 
-print 'loaded markov.py'        # FIXME
+print('loaded markov.py')        # FIXME

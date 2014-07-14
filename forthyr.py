@@ -26,18 +26,16 @@ def representable_syllables_on(c=None):
     return ((c_, v_, r_, y_)
             for c_ in (consonants if c is None else (c,))
             for v_ in (None,) + vowels
-            for y_ in (None,'pre','post')
-            for r_ in (None,'pre','post'))
+            for y_ in ((None,'pre','post') if v_ else (None,))
+            for r_ in ((None,'pre','post') if v_ else (None,)))
 
 def show_syllable(syl):
     c,v,r,y = syl
+    assert not v or not (r or y)
     return ''.join(
         [c,
          'r' if r == 'pre' else '',
          'y' if y == 'pre' else '',
-         # We need to put in a "dummy vowel" to avoid losing information for
-         # syllables with modifiers but no vowels. (Such syllables are not
-         # "legit", but they are representable.)
          v or ('_' if r or y else ''),
          'y' if y == 'post' else '',
          'r' if r == 'post' else ''])
@@ -61,4 +59,4 @@ def dump_syllables(fd):
                           if legit(syl))
                  + '\n')
 
-print 'loaded forthyr.py'       # FIXME
+print('loaded forthyr.py')       # FIXME
