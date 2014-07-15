@@ -220,7 +220,10 @@ vowel (x:_) | isVowel x = error "can't double vowels"
 vowel prev = do v <- sample vowels
                 v' <- tails pYModified (pure v)
                             (heads pYIsPre (pure ("y"++v)) (pure (v++"y")))
-                (:prev) <$> tails pPostR (pure v') (pure (v'++"r"))
+                postR <- if null prev || notElem 'r' (head prev)
+                         then heads pPostR (pure True) (pure False)
+                         else return False
+                pure ((if postR then (v'++"r") else v') : prev)
 
 postVowel :: [String] -> G [String]
 postVowel prev = tails pPostVowel (pure prev) $
