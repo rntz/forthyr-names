@@ -111,14 +111,14 @@ isApproximant x = x `elem` words "l w r h hw"
 isNasal = (== "n")
 isCompound x = x `elem` words "sr lh ts tsr tθ tlh kx"
 -- allowed to terminate a syllable
-isTerminal x = isStop x || x `elem` words "l x"
+isTerminal x = isStop x || x `elem` words "l x s θ"
 
 isRepeat :: String -> String -> Bool
 isRepeat a b = a == b || startsWith a b
 
 needsVowel :: String -> Bool
 needsVowel x = endsWith "w" x
-               || endsWith "h" x
+               || x == "h"
                || (endsWith "r" x && not (isVowel x))
 
 -- Determining legitimacy of next phonemes
@@ -166,6 +166,8 @@ pPostVowel = 0.4           -- probability of post-vowel consonant in syllable
 pTerminalConsonant = 0.6        -- probability of a final consonant in a word
 pForceTerminalConsonant = max 0 (pTerminalConsonant - pPostVowel)
 
+pSecondConsonant = 0.17
+
 pNasalStop = 0.2                -- p. of stop after a nasal initial in consonant
 pStopApproximant = 0.2          -- p. of approximant after a stop
 pFricativeApproximant = 0.05    -- p. of approximant after a fricative
@@ -209,17 +211,18 @@ consonant (x:_) | needsVowel x = error ("needs vowel: " ++ show x)
 consonant prev = gen consonants prev
 
 postNucleus prev@(c:_) | needsVowel c = return prev
-postNucleus prev@(c:_)
-    | isStop c = do prev <- if isNasal c
-                            then option pNasalStop prev stops
-                            else return prev
-                    option pStopApproximant prev $
-                           filter (`elem` words "l w r") approximants
-    | isFricative c = option pFricativeApproximant prev $
-                      filter (`elem` words "w r") approximants
-    | isAffricate c = return prev
-postNucleus prev@("l":_) = tails pLW (pure prev) (pure ("r":prev))
-postNucleus prev = return prev
+postNucleus prev = option pSecondConsonant prev consonants
+-- postNucleus prev@(c:_)
+--     | isStop c = do prev <- if isNasal c
+--                             then option pNasalStop prev stops
+--                             else return prev
+--                     option pStopApproximant prev $
+--                            filter (`elem` words "l w r") approximants
+--     | isFricative c = option pFricativeApproximant prev $
+--                       filter (`elem` words "w r") approximants
+--     | isAffricate c = return prev
+-- postNucleus prev@("l":_) = tails pLW (pure prev) (pure ("r":prev))
+-- postNucleus prev = return prev
 
 vowel :: [String] -> G [String]
 vowel [] = error "can't start with vowel"
@@ -233,7 +236,8 @@ vowel prev = do v <- sample vowels
                 pure ((if postR then (v'++"r") else v') : prev)
 
 postVowel :: [String] -> G [String]
-postVowel prev = option pPostVowel prev terminalConsonants
+--postVowel prev = option pPostVowel prev terminalConsonants
+postVowel prev = option pPostVowel prev $ filter (not . needsVowel) consonants
 
 word :: G String
 word = do len <- randomR (2,5)
