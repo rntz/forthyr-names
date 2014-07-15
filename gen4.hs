@@ -108,6 +108,7 @@ isStop x = x `elem` words "t k p n"
 isFricative x = x `elem` words "f s sr x θ lh"
 isAffricate x = x `elem` words "ts tsr tθ tlh kx"
 isApproximant x = x `elem` words "l w r h hw"
+isNasal = (== "n")
 isCompound x = x `elem` words "sr lh ts tsr tθ tlh kx"
 -- allowed to terminate a syllable
 isTerminal x = isStop x || x `elem` words "l x"
@@ -127,8 +128,8 @@ allowedAfter [] c = c /= "r"
 allowedAfter (prev:_) c =
     not (needsVowel prev
          || isRepeat prev c     -- no repeats
-         -- no (stops or fricatives) followed by stops
-         || (isStop c && (isStop prev || isFricative prev))
+         -- no fricatives followed by stops
+         || (isFricative prev && isStop c)
          -- x cannot be followed by fricatives, or "h"
          || (endsWith "x" prev && (isFricative c || c == "h"))
          -- compounds are single phonemes, no splitting them up
@@ -165,6 +166,7 @@ pPostVowel = 0.4           -- probability of post-vowel consonant in syllable
 pTerminalConsonant = 0.6
 pForceTerminalConsonant = max 0 (pTerminalConsonant - pPostVowel)
 
+pNasalStop = 0.2                -- p. of stop after a nasal initial in consonant
 pStopApproximant = 0.2          -- p. of approximant after a stop
 pFricativeApproximant = 0.05    -- p. of approximant after a fricative
 pLW = 0.1                       -- p. of "w" after an "l"
@@ -205,8 +207,11 @@ consonant prev = gen prev consonants
 
 postNucleus prev@(c:_) | needsVowel c = return prev
 postNucleus prev@(c:_)
-    | isStop c = tails pStopApproximant (pure prev) $ gen prev $
-                 filter (`elem` words "l w r") approximants
+    | isStop c = do prev <- if isNasal c
+                            then tails pNasalStop (pure prev) $ gen prev stops
+                            else return prev
+                    tails pStopApproximant (pure prev) $ gen prev $
+                          filter (`elem` words "l w r") approximants
     | isFricative c = tails pFricativeApproximant (pure prev) $ gen prev $
                       filter (`elem` words "w r") approximants
     | isAffricate c = return prev
@@ -228,9 +233,11 @@ postVowel :: [String] -> G [String]
 postVowel prev = tails pPostVowel (pure prev) $
                  gen prev terminalConsonants
 
-word :: Int -> G String
-word n = concat . reverse <$> syllables n []
+word :: G String
+word = do len <- randomR (2,5)
+          concat . reverse <$> syllables len []
     where
+      syllables :: Int -> [String] -> G [String]
       syllables 0 accum@(x:_)
           | isVowel x = tails pForceTerminalConsonant (pure accum) $
                         gen accum terminalConsonants
@@ -239,8 +246,8 @@ word n = concat . reverse <$> syllables n []
 
 
 -- IO routines
-showWord :: [(String,String)] -> Int -> IO ()
-showWord table n = putStrLn =<< format table <$> runIO (word n)
+showWord :: [(String,String)] -> IO ()
+showWord table = putStrLn =<< format table <$> runIO word
 dispWord = showWord disp
 
 format :: [(String,String)] -> String -> String
@@ -253,14 +260,14 @@ format table s@(x:xs) = case lookupHead s table of
               | startsWith key x = Just (trans, drop (length key) x)
               | otherwise = lookupHead x rest
 
-disp = [("lh", "ɬ"), ("tsr", "č"), ("sr", "sh"),
+disp = [("lh", "ɬ"), ("tsr", "č"), ("sr", "sh"), ("ts", "ç"),
         ("hw","ƕ"),
+        -- voicing rules
+        --("nth", "nð"), ("nt", "nd"), ("lk", "lg"),
         -- ("θ", "th"),
-        ("nk", "ŋ"), -- ("nk", "ng"),
-        ("ts", "ç"),
-        ("tθ", "tθ")             -- to ensure we keep it
-       ] ++
-       [(a++"y", a++"i") | a <- words "a e o u"]
+        ("nk", "ng"),
+        ("tθ", "tθ")]             -- to ensure we keep it
+       ++ [(a++"y", a++"i") | a <- words "a e o u"]
 
 ipa = [("lh", "ɬ"), ("sr", "ʃ"), ("nk", "ŋ"), ("hw", "ʍ"),
        ("a", "ɑ"), ("e", "ɛ"), ("i", "ɪ"), ("u", "ɯ")]
