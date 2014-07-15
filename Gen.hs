@@ -1,4 +1,4 @@
-module Gen4 where
+module Gen where
 
 import Prelude hiding (filter)
 
