@@ -103,20 +103,6 @@ uniform :: [G a] -> G a
 uniform l = choice [(1,x) | x <- l]
 
 
--- Probability parameters
-pYModified = 0.12          -- probability of y-modified vowel
-pYIsPre = 0.7              -- probability that y is a pre- not post-modification
-pPostR = 0.15              -- probability of r-post-modified vowel
-pPostVowel = 0.5           -- probability of post-vowel consonant in syllable
-
-pTerminalConsonant = 0.6
-pForceTerminalConsonant = max 0 (pTerminalConsonant - pPostVowel)
-
-pStopApproximant = 0.1          -- p. of approximant after a stop
-pFricativeApproximant = 0.05    -- p. of approximant after a fricative
-pLW = 0.1                       -- p. of "w" after an "l"
-
-
 -- Some semantic tests
 isStop x = x `elem` words "t k p n"
 isFricative x = x `elem` words "f s sr x θ lh"
@@ -143,8 +129,8 @@ allowedAfter (prev:_) c =
          || isRepeat prev c     -- no repeats
          -- no (stops or fricatives) followed by stops
          || (isStop c && (isStop prev || isFricative prev))
-         -- x cannot be followed by stops, fricatives, or "h"
-         || (endsWith "x" prev && (isStop c || isFricative c || c == "h"))
+         -- x cannot be followed by fricatives, or "h"
+         || (endsWith "x" prev && (isFricative c || c == "h"))
          -- compounds are single phonemes, no splitting them up
          || isCompound (prev ++ c)
          -- consonantal r needs to come after a consonant
@@ -170,7 +156,20 @@ isVowel ('r':'y':x:"yr") = x `elem` "aeiou"
 isVowel _ = False
 
 
--- Some frequency distributions
+-- Probability parameters
+pYModified = 0.12          -- probability of y-modified vowel
+pYIsPre = 0.7              -- probability that y is a pre- not post-modification
+pPostR = 0.15              -- probability of r-post-modified vowel
+pPostVowel = 0.4           -- probability of post-vowel consonant in syllable
+
+pTerminalConsonant = 0.6
+pForceTerminalConsonant = max 0 (pTerminalConsonant - pPostVowel)
+
+pStopApproximant = 0.2          -- p. of approximant after a stop
+pFricativeApproximant = 0.05    -- p. of approximant after a fricative
+pLW = 0.1                       -- p. of "w" after an "l"
+
+-- Frequency distributions
 vowels = freqs [(3,"a"), (1,"e"), (0.7,"i"), (1.4,"o"), (0.25, "u")]
 
 stops = freqs [(10, "t"), (6, "k"), (2.5, "p"), (8, "n")]
