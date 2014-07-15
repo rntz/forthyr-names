@@ -163,7 +163,7 @@ pYIsPre = 0.7              -- probability that y is a pre- not post-modification
 pPostR = 0.15              -- probability of r-post-modified vowel
 pPostVowel = 0.4           -- probability of post-vowel consonant in syllable
 
-pTerminalConsonant = 0.6
+pTerminalConsonant = 0.6        -- probability of a final consonant in a word
 pForceTerminalConsonant = max 0 (pTerminalConsonant - pPostVowel)
 
 pNasalStop = 0.2                -- p. of stop after a nasal initial in consonant
@@ -193,8 +193,11 @@ after ctx f = filter (allowedAfter ctx) f
 
 
 -- Basic generation
-gen :: [String] -> Freq String -> G [String]
-gen prev f = (:prev) <$> sample (after prev f)
+gen :: Freq String -> [String] -> G [String]
+gen f prev = (:prev) <$> sample (after prev f)
+
+option :: Double -> [String] -> Freq String -> G [String]
+option p prev dist = tails p (pure prev) (gen dist prev)
 
 syllable :: [String] -> G [String]
 syllable prev = do prev <- consonant prev
@@ -203,16 +206,16 @@ syllable prev = do prev <- consonant prev
                    postVowel prev
 
 consonant (x:_) | needsVowel x = error ("needs vowel: " ++ show x)
-consonant prev = gen prev consonants
+consonant prev = gen consonants prev
 
 postNucleus prev@(c:_) | needsVowel c = return prev
 postNucleus prev@(c:_)
     | isStop c = do prev <- if isNasal c
-                            then tails pNasalStop (pure prev) $ gen prev stops
+                            then option pNasalStop prev stops
                             else return prev
-                    tails pStopApproximant (pure prev) $ gen prev $
-                          filter (`elem` words "l w r") approximants
-    | isFricative c = tails pFricativeApproximant (pure prev) $ gen prev $
+                    option pStopApproximant prev $
+                           filter (`elem` words "l w r") approximants
+    | isFricative c = option pFricativeApproximant prev $
                       filter (`elem` words "w r") approximants
     | isAffricate c = return prev
 postNucleus prev@("l":_) = tails pLW (pure prev) (pure ("r":prev))
@@ -230,8 +233,7 @@ vowel prev = do v <- sample vowels
                 pure ((if postR then (v'++"r") else v') : prev)
 
 postVowel :: [String] -> G [String]
-postVowel prev = tails pPostVowel (pure prev) $
-                 gen prev terminalConsonants
+postVowel prev = option pPostVowel prev terminalConsonants
 
 word :: G String
 word = do len <- randomR (2,5)
@@ -239,8 +241,7 @@ word = do len <- randomR (2,5)
     where
       syllables :: Int -> [String] -> G [String]
       syllables 0 accum@(x:_)
-          | isVowel x = tails pForceTerminalConsonant (pure accum) $
-                        gen accum terminalConsonants
+          | isVowel x = option pForceTerminalConsonant accum terminalConsonants
       syllables 0 accum = return accum
       syllables n accum = syllable accum >>= syllables (n-1)
 
