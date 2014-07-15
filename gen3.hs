@@ -140,7 +140,7 @@ consonant = choice [(5, stop),
                     (1, affricate),
                     (3, approximant)]
 
-stop = weighted [(10, "t"), (6, "k"), (4, "p"), (5, "n")]
+stop = weighted [(10, "t"), (6, "k"), (2, "p"), (8, "n")]
 fricative = weighted [(1,"f"), (1,"s"), (1,"sr"), (1,"x"), (1,"θ"), (1,"lh")]
 affricate = weighted [(1,"ts"), (1,"tsr"), (1,"tθ"), (1,"tlh"), (1,"kx")]
 approximant = weighted [(1,"l"), (1,"w"), (1,"r"), (1, "h"), (1, "hw")]
@@ -164,7 +164,7 @@ pLW = 0.1                       -- p. of "w" after an "l"
 okay :: [String] -> Bool
 okay (x:xs)
     | isVowel x = not (null xs || isVowel (head xs))
-okay [c] = True
+okay [c] = c /= "r"
 okay (c:prev:prevs) =
     not (needsVowel prev
          || isRepeat prev c     -- no repeats
