@@ -107,11 +107,10 @@ uniform l = choice [(1,x) | x <- l]
 pYModified = 0.12          -- probability of y-modified vowel
 pYIsPre = 0.7              -- probability that y is a pre- not post-modification
 pPostR = 0.15              -- probability of r-post-modified vowel
-pPostVowel = 0.1           -- probability of post-vowel consonant in syllable
+pPostVowel = 0.5           -- probability of post-vowel consonant in syllable
 
--- probability of adding a terminating consonant to what would otherwise be a
--- vowel-terminal word.
-pForceTerminalConsonant = 0.5
+pTerminalConsonant = 0.6
+pForceTerminalConsonant = max 0 (pTerminalConsonant - pPostVowel)
 
 pStopApproximant = 0.1          -- p. of approximant after a stop
 pFricativeApproximant = 0.05    -- p. of approximant after a fricative
@@ -144,8 +143,8 @@ allowedAfter (prev:_) c =
          || isRepeat prev c     -- no repeats
          -- no (stops or fricatives) followed by stops
          || (isStop c && (isStop prev || isFricative prev))
-         -- x cannot be followed by stops or fricatives
-         || (endsWith "x" prev && (isStop c || isFricative c))
+         -- x cannot be followed by stops, fricatives, or "h"
+         || (endsWith "x" prev && (isStop c || isFricative c || c == "h"))
          -- compounds are single phonemes, no splitting them up
          || isCompound (prev ++ c)
          -- consonantal r needs to come after a consonant
@@ -174,17 +173,19 @@ isVowel _ = False
 -- Some frequency distributions
 vowels = freqs [(3,"a"), (1,"e"), (0.7,"i"), (1.4,"o"), (0.25, "u")]
 
-stops = freqs [(10, "t"), (6, "k"), (2, "p"), (8, "n")]
-fricatives = freqs [(1,"f"), (1,"s"), (1,"sr"), (1,"x"), (1,"θ"), (1,"lh")]
-affricates = freqs [(1,"ts"), (1,"tsr"), (1,"tθ"), (1,"tlh"), (1,"kx")]
-approximants = freqs [(1,"l"), (1,"w"), (1,"r"), (1, "h"), (1, "hw")]
+stops = freqs [(10, "t"), (6, "k"), (2.5, "p"), (8, "n")]
+fricatives = freqs [(1,"f"), (1,"s"), (0.5,"sr"),
+                    (0.8,"x"), (0.8,"θ"), (1,"lh")]
+affricates = freqs [(1,"ts"), (1,"tsr"), (0.75,"tθ"), (0.5,"tlh"), (1,"kx")]
+approximants = freqs [(2,"l"), (0.8,"w"), (1,"r"), (1, "h"), (0.5, "hw")]
 
 consonants = merge [(5, stops),
                     (2, fricatives),
                     (1, affricates),
                     (3, approximants)]
 
-terminalConsonants = filter isTerminal consonants
+terminalConsonants = freqs [(4,"t"), (1.5,"k"), (2,"p"), (4,"n"),
+                            (3,"l"), (2, "x")]
 
 after :: [String] -> Freq String -> Freq String
 after ctx f = filter (allowedAfter ctx) f
@@ -253,10 +254,10 @@ format table s@(x:xs) = case lookupHead s table of
 disp = [("lh", "ɬ"), ("tsr", "č"), ("sr", "sh"),
         ("hw","ƕ"),
         -- ("θ", "th"),
-        ("nk", "ŋ"),
-        -- ("nk", "ng"),
-        ("tθ", "tθ"),             -- to ensure we keep it
-        ("iy", "í")] ++
+        ("nk", "ŋ"), -- ("nk", "ng"),
+        ("ts", "ç"),
+        ("tθ", "tθ")             -- to ensure we keep it
+       ] ++
        [(a++"y", a++"i") | a <- words "a e o u"]
 
 ipa = [("lh", "ɬ"), ("sr", "ʃ"), ("nk", "ŋ"), ("hw", "ʍ"),
