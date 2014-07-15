@@ -224,8 +224,9 @@ word n = concat <$> syllables n []
 
 
 -- IO routines
-dispWord :: Int -> IO ()
-dispWord n = putStrLn =<< format disp <$> runIO (word n)
+showWord :: [(String,String)] -> Int -> IO ()
+showWord table n = putStrLn =<< format table <$> runIO (word n)
+dispWord = showWord disp
 
 format :: [(String,String)] -> String -> String
 format _ [] = []
@@ -246,5 +247,5 @@ disp = [("lh", "ɬ"),
         ("iy", "í")] ++
        [(a++"y", a++"i") | a <- words "a e o u"]
 
-ipa = [("lh", "ɬ"), ("sr", "ʃ"), ("nk", "ŋ"),
+ipa = [("lh", "ɬ"), ("sr", "ʃ"), ("nk", "ŋ"), ("hw", "ʍ"),
        ("a", "ɑ"), ("e", "ɛ"), ("i", "ɪ"), ("u", "ɯ")]
