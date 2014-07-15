@@ -107,6 +107,11 @@ uniform l = choice [(1,x) | x <- l]
 pYModified = 0.12          -- probability of y-modified vowel
 pYIsPre = 0.7              -- probability that y is a pre- not post-modification
 pPostR = 0.15              -- probability of r-post-modified vowel
+pPostVowel = 0.1           -- probability of post-vowel consonant in syllable
+
+-- probability of adding a terminating consonant to what would otherwise be a
+-- vowel-terminal word.
+pForceTerminalConsonant = 0.5
 
 pStopApproximant = 0.1          -- p. of approximant after a stop
 pFricativeApproximant = 0.05    -- p. of approximant after a fricative
@@ -119,6 +124,8 @@ isFricative x = x `elem` words "f s sr x θ lh"
 isAffricate x = x `elem` words "ts tsr tθ tlh kx"
 isApproximant x = x `elem` words "l w r h hw"
 isCompound x = x `elem` words "sr lh ts tsr tθ tlh kx"
+-- allowed to terminate a syllable
+isTerminal x = isStop x || x `elem` words "l x"
 
 isRepeat :: String -> String -> Bool
 isRepeat a b = a == b || startsWith a b
@@ -167,15 +174,17 @@ isVowel _ = False
 -- Some frequency distributions
 vowels = freqs [(3,"a"), (1,"e"), (0.7,"i"), (1.4,"o"), (0.25, "u")]
 
+stops = freqs [(10, "t"), (6, "k"), (2, "p"), (8, "n")]
+fricatives = freqs [(1,"f"), (1,"s"), (1,"sr"), (1,"x"), (1,"θ"), (1,"lh")]
+affricates = freqs [(1,"ts"), (1,"tsr"), (1,"tθ"), (1,"tlh"), (1,"kx")]
+approximants = freqs [(1,"l"), (1,"w"), (1,"r"), (1, "h"), (1, "hw")]
+
 consonants = merge [(5, stops),
                     (2, fricatives),
                     (1, affricates),
                     (3, approximants)]
 
-stops = freqs [(10, "t"), (6, "k"), (2, "p"), (8, "n")]
-fricatives = freqs [(1,"f"), (1,"s"), (1,"sr"), (1,"x"), (1,"θ"), (1,"lh")]
-affricates = freqs [(1,"ts"), (1,"tsr"), (1,"tθ"), (1,"tlh"), (1,"kx")]
-approximants = freqs [(1,"l"), (1,"w"), (1,"r"), (1, "h"), (1, "hw")]
+terminalConsonants = filter isTerminal consonants
 
 after :: [String] -> Freq String -> Freq String
 after ctx f = filter (allowedAfter ctx) f
@@ -213,14 +222,17 @@ vowel prev = do v <- sample vowels
                 (:prev) <$> tails pPostR (pure v') (pure (v'++"r"))
 
 postVowel :: [String] -> G [String]
-postVowel x = return x          -- FIXME
-
-syllables :: Int -> [String] -> G [String]
-syllables 0 ctx = return (reverse ctx)
-syllables n ctx = syllable ctx >>= syllables (n-1)
+postVowel prev = tails pPostVowel (pure prev) $
+                 gen prev terminalConsonants
 
 word :: Int -> G String
-word n = concat <$> syllables n []
+word n = concat . reverse <$> syllables n []
+    where
+      syllables 0 accum@(x:_)
+          | isVowel x = tails pForceTerminalConsonant (pure accum) $
+                        gen accum terminalConsonants
+      syllables 0 accum = return accum
+      syllables n accum = syllable accum >>= syllables (n-1)
 
 
 -- IO routines
@@ -238,11 +250,11 @@ format table s@(x:xs) = case lookupHead s table of
               | startsWith key x = Just (trans, drop (length key) x)
               | otherwise = lookupHead x rest
 
-disp = [("lh", "ɬ"),
-        ("tsr", "ch"),
-        ("sr", "sh"),
-        ("θ", "th"),
-        ("nk", "ng"),
+disp = [("lh", "ɬ"), ("tsr", "č"), ("sr", "sh"),
+        ("hw","ƕ"),
+        -- ("θ", "th"),
+        ("nk", "ŋ"),
+        -- ("nk", "ng"),
         ("tθ", "tθ"),             -- to ensure we keep it
         ("iy", "í")] ++
        [(a++"y", a++"i") | a <- words "a e o u"]
