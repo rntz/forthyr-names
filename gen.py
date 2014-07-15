@@ -91,7 +91,7 @@ p_terminal_consonant = 0.3
 compounds = {
     't': tuple('θ s sr lh'.split()),
     's': tuple('r'),
-    'l': tuple('w'),
+    'l': tuple('h'),
     'k': tuple('x'),
     'n': tuple('k'),
 }
@@ -102,6 +102,7 @@ def needs_vowel(prev):
         prev
         # a vowel must follow a consonant phoneme ending in 'w' or 'r'
         and not prev.endswith('w')
+        and not prev.endswith('h')
         and (not prev.endswith('r') or is_pvowel(prev)))
 
 
