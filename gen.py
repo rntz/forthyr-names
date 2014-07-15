@@ -106,19 +106,6 @@ def needs_vowel(prev):
         and (not prev.endswith('r') or is_pvowel(prev)))
 
 
-def mk_phoneme(prev=None):
-    if prev is None:
-        # must make consonant at beginning of word
-        return mk_consonant()
-    if matches(r_pvowel, prev):
-        # no multiple vowels in a row.
-        return mk_consonant(prev)
-    if not needs_vowel(prev):
-        # some things force the next phoneme to be a vowel
-        return mk_vowel(prev)
-    # Previous phoneme was a consonant not ending in w.
-    return mk_consonant(prev) if heads(p_cluster) else mk_vowel(prev)
-
 def mk_vowel(prev=None):
     assert not (prev and matches(r_pvowel, prev))
     v = choice(vowels)
@@ -158,15 +145,6 @@ def mk_consonant(prev=None):
     if c in compounds and heads(p_compound):
         c += choice(compounds[c])
     return c
-
-def mk_phonemes(nphonemes=10):
-    if not nphonemes: return ''
-    prev = None
-    phonemes = []
-    for _ in range(nphonemes):
-        prev = mk_phoneme(prev)
-        phonemes.append(prev)
-    return ''.join(phonemes)
 
 def mk_syllable(prev=None):
     prev = mk_consonant(prev)
