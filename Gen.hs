@@ -197,12 +197,6 @@ pC3 = 0.4                       -- probability of C3 occurring.
 pTerminalC3 = 0.6               -- probability of ending a word w/ a consonant
 pForceTerminalC3 = max 0 (pTerminalC3 - pC3)
 
--- TODO: remove these, no longer used
--- pNasalStop = 0.2                -- p. of stop after a nasal initial in consonant
--- pStopApproximant = 0.2          -- p. of approximant after a stop
--- pFricativeApproximant = 0.05    -- p. of approximant after a fricative
--- pLW = 0.1                       -- p. of "w" after an "l"
-
 -- Frequency distributions
 vowels = freqs [(3,"a"), (1,"e"), (0.7,"i"), (1.4,"o"), (0.25, "u")]
 
@@ -237,47 +231,20 @@ option p pos prev dist = bern p (sample $ mapFreqs f dist) (pure prev)
     where f x | ok pos prev x = x:prev
               | otherwise = prev
 
--- oldOption :: Rational -> [String] -> Freq String -> G [String]
--- oldOption p prev dist = maybe prev (:prev) <$> sample newDist
---     where newDist = merge [(p, mapFreqs Just (after prev dist)),
---                            (1-p, always Nothing)]
-
--- oldOption :: Double -> [String] -> Freq String -> G [String]
--- oldOption p prev dist = bern p (gen dist prev) (pure prev)
-
 syllable :: [String] -> G [String]
-syllable prev = do prev <- consonant prev
+syllable prev = do prev <- consonant1 prev
                    prev <- consonant2 prev
                    prev <- vowel prev
                    consonant3 prev
 
-consonant (x:_) | needsVowel x = error ("needs vowel: " ++ show x)
-consonant prev = gen C1 prev consonants
+consonant1 (x:_) | needsVowel x = error ("needs vowel: " ++ show x)
+consonant1 prev = gen C1 prev consonants
 
 consonant2 prev@(c:_) | needsVowel c = return prev
 consonant2 prev = option pC2 C2 prev consonants
--- NB. we will do some redundant filtering here due to the ok. TODO: fix this
---consonant2 prev = oldOption pC2 prev (filter (ok C2 prev) consonants)
 
--- consonant2 prev@(c:_) = oldOption pC2 prev (filter ok consonants)
---     where ok x | isAffricate c = not $ (isStop x || isAffricate x)
---                                        && trace ("POST-AFFRICATE: " ++ concat (reverse (x:prev))) True
---                | isStop c = not (isNasal x
---                                  && trace ("NASAL: " ++ concat (reverse (x:prev))) True)
---           ok _ = True
--- consonant2 [] = undefined      -- impossible
-
--- consonant2 prev@(c:_)
---     | isStop c = do prev <- if isNasal c
---                             then oldOption pNasalStop prev stops
---                             else return prev
---                     oldOption pStopApproximant prev $
---                            filter (`elem` words "l w r") approximants
---     | isFricative c = oldOption pFricativeApproximant prev $
---                       filter (`elem` words "w r") approximants
---     | isAffricate c = return prev
--- consonant2 prev@("l":_) = tails pLW (pure prev) (pure ("r":prev))
--- consonant2 prev = return prev
+consonant3 :: [String] -> G [String]
+consonant3 prev = option pC3 C3 prev c3Consonants
 
 vowel :: [String] -> G [String]
 vowel [] = error "can't start with vowel"
@@ -289,10 +256,6 @@ vowel prev = do v <- sample vowels
                          then bern pPostR (pure True) (pure False)
                          else return False
                 pure ((if postR then (v'++"r") else v') : prev)
-
-consonant3 :: [String] -> G [String]
-consonant3 prev = option pC3 C3 prev c3Consonants
---consonant3 prev = oldOption pC3 prev $ filter isTerminal consonants
 
 word :: G String
 word = do len <- randomR (2,5)
