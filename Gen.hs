@@ -95,9 +95,9 @@ choice cs = do p <- randomR (0, total)
 -- weighted :: [(Double, a)] -> G a
 -- weighted l = choice [(w,pure x) | (w,x) <- l]
 
-heads :: Double -> G a -> G a -> G a
-heads p x y = assert (isProb p) $ choice [(p, x), (1-p, y)]
-tails p x y = heads p y x
+-- Bernoulli distribution (biased coin flip)
+bern :: Double -> G a -> G a -> G a
+bern p x y = assert (isProb p) $ choice [(p, x), (1-p, y)]
 
 uniform :: [G a] -> G a
 uniform l = choice [(1,x) | x <- l]
@@ -200,7 +200,7 @@ gen :: Freq String -> [String] -> G [String]
 gen f prev = (:prev) <$> sample (after prev f)
 
 option :: Double -> [String] -> Freq String -> G [String]
-option p prev dist = tails p (pure prev) (gen dist prev)
+option p prev dist = bern p (gen dist prev) (pure prev)
 
 syllable :: [String] -> G [String]
 syllable prev = do prev <- consonant prev
@@ -224,15 +224,16 @@ postNucleus prev = option pSecondConsonant prev consonants
 --     | isAffricate c = return prev
 -- postNucleus prev@("l":_) = tails pLW (pure prev) (pure ("r":prev))
 -- postNucleus prev = return prev
+postNucleus [] = undefined      -- impossible
 
 vowel :: [String] -> G [String]
 vowel [] = error "can't start with vowel"
 vowel (x:_) | isVowel x = error "can't double vowels"
 vowel prev = do v <- sample vowels
-                v' <- tails pYModified (pure v)
-                            (heads pYIsPre (pure ("y"++v)) (pure (v++"y")))
+                v' <- bern (1-pYModified) (pure v)
+                           (bern pYIsPre (pure ("y"++v)) (pure (v++"y")))
                 postR <- if null prev || notElem 'r' (head prev)
-                         then heads pPostR (pure True) (pure False)
+                         then bern pPostR (pure True) (pure False)
                          else return False
                 pure ((if postR then (v'++"r") else v') : prev)
 
