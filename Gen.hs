@@ -153,16 +153,23 @@ data SyllablePos = C1 | C2 | V | C3 -- positions in CCVC structure
 ok :: SyllablePos -> [String] -> String -> Bool
 ok pos prev c | not (okIn pos c && okAfter prev c) = False
 ok C2 ctx@(c1:_) c2
-    | isFricative c1 && isStop c2 = nope "FS" False
-    | isAffricate c1 && isAffricate c2 = nope "AA" False
+    -- C1 x cannot have a C2
+    | endsWith "x" c1 = -- nope "x_"
+                        False
+    -- C1 l must be followed by an approximant
+    | startsWith "l" c1 && not (isApproximant c2) = -- nope "l[SFA]"
+                                                    False
+    | isFricative c1 && isStop c2 = -- nope "FS"
+                                    False
     -- TODO: remove this rule?
-    | isStop c1 && isNasal c2 = nope "SN" False
+    | isStop c1 && isNasal c2 = -- nope "SN"
+                                False
   where nope msg = trace ("-- c2 " ++ msg ++ ": " ++ concat (reverse $ c2:ctx))
 ok _ _ _ = True
 
 okIn :: SyllablePos -> String -> Bool
--- should we allow affricates in C3?
-okIn C3 c = not (needsVowel c)
+-- TODO: should we allow affricates in C3? then can't say "cats"
+okIn C3 c = not (needsVowel c) && not (isAffricate c)
 --okIn C3 c = isStop c || c `elem` words "l x s θ"
 okIn _ _ = True
 
@@ -176,9 +183,8 @@ okAfter ctx@(prev:_) c =
          || (isAffricate prev && isAffricate c)
          -- no lh followed by l
          || (prev == "lh" && c == "l")
-         -- x cannot be followed by fricatives, or "h"
-         -- TODO: remove this rule?
-         || (endsWith "x" prev && (isFricative c || c == "h"))
+         -- x cannot be followed by "h"
+         || (endsWith "x" prev && c == "h")
          -- compounds are single phonemes, no splitting them up
          || isCompound (prev ++ c)
          -- consonantal r needs to come after a consonant
@@ -203,7 +209,7 @@ vowels = freqs [(3,"a"), (1,"e"), (0.7,"i"), (1.4,"o"), (0.25, "u")]
 stops = freqs [(10, "t"), (6, "k"), (2.5, "p"), (8, "n")]
 fricatives = freqs [(1,"f"), (1,"s"), (0.5,"sr"),
                     (0.8,"x"), (0.8,"θ"), (1,"lh")]
-affricates = freqs [(1,"ts"), (1,"tsr"), (0.75,"tθ"), (0.5,"tlh"), (1,"kx")]
+affricates = freqs [(1,"ts"), (1,"tsr"), (0.75,"tθ"), (0.5,"tlh"), (0.5,"kx")]
 approximants = freqs [(2,"l"), (0.8,"w"), (1,"r"), (1, "h"), (0.5, "hw")]
 
 consonants = merge [(5, stops),
@@ -211,11 +217,9 @@ consonants = merge [(5, stops),
                     (1, affricates),
                     (3, approximants)]
 
--- TODO: should these be merged
+c1Consonants = filter (okIn C2) consonants
+c2Consonants = filter (okIn C2) consonants
 c3Consonants = filter (okIn C3) consonants
--- these are word-terminal consonants
-terminalConsonants = freqs [(4,"t"), (1.5,"k"), (2,"p"), (4,"n"),
-                            (3,"l"), (2, "x"), (2, "s"), (2, "θ")]
 
 
 -- Basic generation
@@ -234,11 +238,8 @@ syllable prev = do prev <- consonant1 prev
                    consonant3 prev
 
 consonant1 (x:_) | needsVowel x = error ("needs vowel: " ++ show x)
-consonant1 prev = gen C1 prev consonants
-
-consonant2 prev@(c:_) | needsVowel c = return prev
-consonant2 prev = option pC2 C2 prev consonants
-
+consonant1 prev = gen C1 prev c1Consonants
+consonant2 prev = option pC2 C2 prev c2Consonants
 consonant3 prev = option pC3 C3 prev c3Consonants
 
 vowel :: [String] -> G [String]
@@ -258,7 +259,7 @@ word = do len <- randomR (2,5)
     where
       syllables :: Int -> [String] -> G [String]
       syllables 0 accum@(x:_)
-          | isVowel x = option pForceTerminalC3 C3 accum terminalConsonants
+          | isVowel x = option pForceTerminalC3 C3 accum c3Consonants
       syllables 0 accum = return accum
       syllables n accum = syllable accum >>= syllables (n-1)
 
@@ -270,7 +271,7 @@ showWords table n = do words <- replicateM n (runIO word)
 dispWords = showWords disp
 
 showWordsWith table n g = mapM_ (putStrLn . format table)
-                               (runWith g $ replicateM n word)
+                               (runWith (R.mkStdGen g) $ replicateM n word)
 dispWordsWith = showWordsWith disp
 
 format :: [(String,String)] -> String -> String
