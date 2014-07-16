@@ -153,13 +153,15 @@ data SyllablePos = C1 | C2 | V | C3 -- positions in CCVC structure
 ok :: SyllablePos -> [String] -> String -> Bool
 ok pos prev c | not (okIn pos c && okAfter prev c) = False
 ok C2 ctx@(c1:_) c2
-    | isAffricate c1 = not $ (isStop c2 || isAffricate c2)
-                             -- && trace ("POST-AFFRICATE: " ++ concat (reverse $ c2:ctx)) True
-    | isStop c1 = not $ isNasal c2
-                        -- && trace ("NASAL: " ++ concat (reverse $ c2:ctx)) True
+    | isFricative c1 && isStop c2 = nope "FS" False
+    | isAffricate c1 && isAffricate c2 = nope "AA" False
+    -- TODO: remove this rule?
+    | isStop c1 && isNasal c2 = nope "SN" False
+  where nope msg = trace ("-- c2 " ++ msg ++ ": " ++ concat (reverse $ c2:ctx))
 ok _ _ _ = True
 
 okIn :: SyllablePos -> String -> Bool
+-- should we allow affricates in C3?
 okIn C3 c = not (needsVowel c)
 --okIn C3 c = isStop c || c `elem` words "l x s θ"
 okIn _ _ = True
@@ -168,13 +170,12 @@ okAfter :: [String] -> String -> Bool
 okAfter l v | isVowel v = not (null l || isVowel (head l))
 okAfter [] c = c /= "r"
 okAfter ctx@(prev:_) c =
+    let err s = trace ("-- " ++ s ++ ": " ++ concat (reverse $ c:ctx)) in -- TODO: remove
     not (needsVowel prev
          || isRepeat prev c     -- no repeats
+         || (isAffricate prev && isAffricate c)
          -- no lh followed by l
          || (prev == "lh" && c == "l")
-         -- no fricatives followed by stops
-         -- TODO: remove this rule?
-         || (isFricative prev && isStop c)
          -- x cannot be followed by fricatives, or "h"
          -- TODO: remove this rule?
          || (endsWith "x" prev && (isFricative c || c == "h"))
