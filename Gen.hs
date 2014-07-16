@@ -7,8 +7,9 @@ import Debug.Trace (trace, traceStack)
 import Control.Applicative
 import Control.Exception (assert)
 import Control.Monad
-import Control.Monad.State.Strict (State, get, put, state, runState)
+import Control.Monad.State.Strict (State, get, put, state, runState, evalState)
 
+import Data.List (inits, tails)
 import Data.Map (Map)
 import Data.Maybe (mapMaybe)
 import Data.Traversable
@@ -43,6 +44,8 @@ freqs l | total > 0 = Freq $ Map.fromListWith (+) [(x,w/total) | (w,x) <- l]
         | otherwise = error "invalid frequency distribution"
     where total = sum $ map fst l
 
+always x = freqs [(1,x)]
+
 freqList :: Freq a -> [(Rational, a)]
 freqList (Freq m) = [(w,x) | (x,w) <- Map.toList m]
 
@@ -73,6 +76,9 @@ type G a = Sampler StdGen a
 
 runIO :: G a -> IO a
 runIO k = R.getStdRandom (runState k)
+
+runWith :: StdGen -> G a -> a
+runWith g k = evalState k g
 
 random :: (RandomGen g, Random a) => Sampler g a
 random = state R.random
@@ -115,6 +121,7 @@ isTerminal = not . needsVowel
 --isTerminal x = isStop x || x `elem` words "l x s θ"
 
 isRepeat :: String -> String -> Bool
+--isRepeat a b = last a == head b
 isRepeat a b = a == b || startsWith a b
 
 needsVowel :: String -> Bool
@@ -126,9 +133,13 @@ needsVowel x = endsWith "w" x
 allowedAfter :: [String] -> String -> Bool
 allowedAfter l v | isVowel v = not (null l || isVowel (head l))
 allowedAfter [] c = c /= "r"
-allowedAfter (prev:_) c =
+allowedAfter ctx@(prev:_) c =
+    let errmsg = "nope: " ++ concat (reverse $ c:ctx) in
     not (needsVowel prev
-         || isRepeat prev c     -- no repeats
+         || (isRepeat prev c -- && trace errmsg True
+            )     -- no repeats
+         -- no lh followed by l
+         || (prev == "lh" && c == "l")
          -- no fricatives followed by stops
          || (isFricative prev && isStop c)
          -- x cannot be followed by fricatives, or "h"
@@ -137,6 +148,16 @@ allowedAfter (prev:_) c =
          || isCompound (prev ++ c)
          -- consonantal r needs to come after a consonant
          || (c == "r" && isVowel prev))
+
+data SyllablePos = C1 | C2 | V | C3 -- positions in CCVC structure
+
+ok :: SyllablePos -> [String] -> String -> Bool
+ok _ prev c | not (allowedAfter prev c) = False
+ok C2 ctx@(c1:_) c2
+    | isAffricate c1 = not $ isStop c2 || isAffricate c2
+                             && trace ("POST-AFFRICATE: " ++ concat (reverse $ c2:ctx)) True
+    | isStop c1 = not (isNasal c2 && trace ("NASAL: " ++ concat (reverse $ c2:ctx)) True)
+ok _ _ _ = True
 
 -- UGH.
 isVowel [x] = x `elem` "aeiou"
@@ -162,17 +183,19 @@ isVowel _ = False
 pYModified = 0.12          -- probability of y-modified vowel
 pYIsPre = 0.7              -- probability that y is a pre- not post-modification
 pPostR = 0.15              -- probability of r-post-modified vowel
-pPostVowel = 0.4           -- probability of post-vowel consonant in syllable
 
-pTerminalConsonant = 0.6        -- probability of a final consonant in a word
-pForceTerminalConsonant = max 0 (pTerminalConsonant - pPostVowel)
+-- Syllable structure is C(C)V(C). We label these C1(C2)V(C3).
+pC2 = 0.17                      -- probability of C2 occurring.
+pC3 = 0.4                       -- probability of C3 occurring.
 
-pSecondConsonant = 0.17
+pTerminalC3 = 0.6               -- probability of ending a word w/ a consonant
+pForceTerminalC3 = max 0 (pTerminalC3 - pC3)
 
-pNasalStop = 0.2                -- p. of stop after a nasal initial in consonant
-pStopApproximant = 0.2          -- p. of approximant after a stop
-pFricativeApproximant = 0.05    -- p. of approximant after a fricative
-pLW = 0.1                       -- p. of "w" after an "l"
+-- TODO: remove these, no longer used
+-- pNasalStop = 0.2                -- p. of stop after a nasal initial in consonant
+-- pStopApproximant = 0.2          -- p. of approximant after a stop
+-- pFricativeApproximant = 0.05    -- p. of approximant after a fricative
+-- pLW = 0.1                       -- p. of "w" after an "l"
 
 -- Frequency distributions
 vowels = freqs [(3,"a"), (1,"e"), (0.7,"i"), (1.4,"o"), (0.25, "u")]
@@ -197,23 +220,38 @@ after ctx f = filter (allowedAfter ctx) f
 
 -- Basic generation
 gen :: Freq String -> [String] -> G [String]
-gen f prev = (:prev) <$> sample (after prev f)
+gen dist prev = (:prev) <$> sample (after prev dist)
+
+-- option :: Rational -> [String] -> Freq String -> G [String]
+-- option p prev dist = maybe prev (:prev) <$> sample newDist
+--     where newDist = merge [(p, mapFreqs Just (after prev dist)),
+--                            (1-p, always Nothing)]
 
 option :: Double -> [String] -> Freq String -> G [String]
 option p prev dist = bern p (gen dist prev) (pure prev)
 
 syllable :: [String] -> G [String]
 syllable prev = do prev <- consonant prev
-                   prev <- postNucleus prev
+                   prev <- consonant2 prev
                    prev <- vowel prev
-                   postVowel prev
+                   consonant3 prev
 
 consonant (x:_) | needsVowel x = error ("needs vowel: " ++ show x)
 consonant prev = gen consonants prev
 
-postNucleus prev@(c:_) | needsVowel c = return prev
-postNucleus prev = option pSecondConsonant prev consonants
--- postNucleus prev@(c:_)
+consonant2 prev@(c:_) | needsVowel c = return prev
+-- NB. we will do some redundant filtering here due to the ok. TODO: fix this
+consonant2 prev = option pC2 prev (filter (ok C2 prev) consonants)
+
+-- consonant2 prev@(c:_) = option pC2 prev (filter ok consonants)
+--     where ok x | isAffricate c = not $ (isStop x || isAffricate x)
+--                                        && trace ("POST-AFFRICATE: " ++ concat (reverse (x:prev))) True
+--                | isStop c = not (isNasal x
+--                                  && trace ("NASAL: " ++ concat (reverse (x:prev))) True)
+--           ok _ = True
+-- consonant2 [] = undefined      -- impossible
+
+-- consonant2 prev@(c:_)
 --     | isStop c = do prev <- if isNasal c
 --                             then option pNasalStop prev stops
 --                             else return prev
@@ -222,9 +260,8 @@ postNucleus prev = option pSecondConsonant prev consonants
 --     | isFricative c = option pFricativeApproximant prev $
 --                       filter (`elem` words "w r") approximants
 --     | isAffricate c = return prev
--- postNucleus prev@("l":_) = tails pLW (pure prev) (pure ("r":prev))
--- postNucleus prev = return prev
-postNucleus [] = undefined      -- impossible
+-- consonant2 prev@("l":_) = tails pLW (pure prev) (pure ("r":prev))
+-- consonant2 prev = return prev
 
 vowel :: [String] -> G [String]
 vowel [] = error "can't start with vowel"
@@ -237,8 +274,8 @@ vowel prev = do v <- sample vowels
                          else return False
                 pure ((if postR then (v'++"r") else v') : prev)
 
-postVowel :: [String] -> G [String]
-postVowel prev = option pPostVowel prev $ filter isTerminal consonants
+consonant3 :: [String] -> G [String]
+consonant3 prev = option pC3 prev $ filter isTerminal consonants
 
 word :: G String
 word = do len <- randomR (2,5)
@@ -246,15 +283,20 @@ word = do len <- randomR (2,5)
     where
       syllables :: Int -> [String] -> G [String]
       syllables 0 accum@(x:_)
-          | isVowel x = option pForceTerminalConsonant accum terminalConsonants
+          | isVowel x = option pForceTerminalC3 accum terminalConsonants
       syllables 0 accum = return accum
       syllables n accum = syllable accum >>= syllables (n-1)
 
 
 -- IO routines
-showWord :: [(String,String)] -> IO ()
-showWord table = putStrLn =<< format table <$> runIO word
-dispWord = showWord disp
+showWords :: [(String,String)] -> Int -> IO ()
+showWords table n = do words <- replicateM n (runIO word)
+                       forM_ words $ putStrLn . format table
+dispWords = showWords disp
+
+showWordsWith table n g = mapM_ (putStrLn . format table)
+                               (runWith g $ replicateM n word)
+dispWordsWith = showWordsWith disp
 
 format :: [(String,String)] -> String -> String
 format _ [] = []
