@@ -118,52 +118,6 @@ isAffricate x = x `elem` words "ts tsr tθ tlh kx"
 isApproximant x = x `elem` words "l w r h hw"
 isNasal = (== "n")
 isCompound x = x `elem` words "sr lh ts tsr tθ tlh kx"
--- allowed to terminate a syllable
-isTerminal = not . needsVowel
---isTerminal x = isStop x || x `elem` words "l x s θ"
-
-isRepeat :: String -> String -> Bool
---isRepeat a b = last a == head b
-isRepeat a b = a == b || startsWith a b
-
-needsVowel :: String -> Bool
-needsVowel x = endsWith "w" x
-               || x == "h"
-               || (endsWith "r" x && not (isVowel x))
-
--- Determining legitimacy of next phonemes
-allowedAfter :: [String] -> String -> Bool
-allowedAfter l v | isVowel v = not (null l || isVowel (head l))
-allowedAfter [] c = c /= "r"
-allowedAfter ctx@(prev:_) c =
-    let errmsg = "nope: " ++ concat (reverse $ c:ctx) in
-    not (needsVowel prev
-         || (isRepeat prev c -- && trace errmsg True
-            )     -- no repeats
-         -- no lh followed by l
-         || (prev == "lh" && c == "l")
-         -- no fricatives followed by stops
-         || (isFricative prev && isStop c)
-         -- x cannot be followed by fricatives, or "h"
-         || (endsWith "x" prev && (isFricative c || c == "h"))
-         -- compounds are single phonemes, no splitting them up
-         || isCompound (prev ++ c)
-         -- consonantal r needs to come after a consonant
-         || (c == "r" && isVowel prev))
-
-data SyllablePos = C1 | C2 | V | C3 -- positions in CCVC structure
-
--- TODO: refactor this into two methods, okayAfter (i.e. allowedAfter) and
--- (okayIn :: SyllablePos -> String -> Bool)
-ok :: SyllablePos -> [String] -> String -> Bool
-ok _ prev c | not (allowedAfter prev c) = False
-ok C2 ctx@(c1:_) c2
-    | isAffricate c1 = not $ (isStop c2 || isAffricate c2)
-                             -- && trace ("POST-AFFRICATE: " ++ concat (reverse $ c2:ctx)) True
-    | isStop c1 = not $ isNasal c2
-                        -- && trace ("NASAL: " ++ concat (reverse $ c2:ctx)) True
-ok C3 ctx c3 = isTerminal c3
-ok _ _ _ = True
 
 -- UGH.
 isVowel [x] = x `elem` "aeiou"
@@ -183,6 +137,51 @@ isVowel ('r':'y':x:"r") = x `elem` "aeiou"
 isVowel ('r':'y':x:"y") = x `elem` "aeiou"
 isVowel ('r':'y':x:"yr") = x `elem` "aeiou"
 isVowel _ = False
+
+isRepeat :: String -> String -> Bool
+isRepeat a b = last a == head b
+-- isRepeat a b = a == b || startsWith a b
+
+needsVowel :: String -> Bool
+needsVowel x = endsWith "w" x
+               || x == "h"
+               || (endsWith "r" x && not (isVowel x))
+
+data SyllablePos = C1 | C2 | V | C3 -- positions in CCVC structure
+
+-- Determining legitimacy of next phonemes
+ok :: SyllablePos -> [String] -> String -> Bool
+ok pos prev c | not (okIn pos c && okAfter prev c) = False
+ok C2 ctx@(c1:_) c2
+    | isAffricate c1 = not $ (isStop c2 || isAffricate c2)
+                             -- && trace ("POST-AFFRICATE: " ++ concat (reverse $ c2:ctx)) True
+    | isStop c1 = not $ isNasal c2
+                        -- && trace ("NASAL: " ++ concat (reverse $ c2:ctx)) True
+ok _ _ _ = True
+
+okIn :: SyllablePos -> String -> Bool
+okIn C3 c = not (needsVowel c)
+--okIn C3 c = isStop c || c `elem` words "l x s θ"
+okIn _ _ = True
+
+okAfter :: [String] -> String -> Bool
+okAfter l v | isVowel v = not (null l || isVowel (head l))
+okAfter [] c = c /= "r"
+okAfter ctx@(prev:_) c =
+    not (needsVowel prev
+         || isRepeat prev c     -- no repeats
+         -- no lh followed by l
+         || (prev == "lh" && c == "l")
+         -- no fricatives followed by stops
+         -- TODO: remove this rule?
+         || (isFricative prev && isStop c)
+         -- x cannot be followed by fricatives, or "h"
+         -- TODO: remove this rule?
+         || (endsWith "x" prev && (isFricative c || c == "h"))
+         -- compounds are single phonemes, no splitting them up
+         || isCompound (prev ++ c)
+         -- consonantal r needs to come after a consonant
+         || (c == "r" && isVowel prev))
 
 
 -- Probability parameters
@@ -212,14 +211,10 @@ consonants = merge [(5, stops),
                     (3, approximants)]
 
 -- TODO: should these be merged
--- these are c3-permissible consonants
-c3Consonants = filter isTerminal consonants
+c3Consonants = filter (okIn C3) consonants
 -- these are word-terminal consonants
 terminalConsonants = freqs [(4,"t"), (1.5,"k"), (2,"p"), (4,"n"),
                             (3,"l"), (2, "x"), (2, "s"), (2, "θ")]
-
-after :: [String] -> Freq String -> Freq String
-after ctx f = filter (allowedAfter ctx) f
 
 
 -- Basic generation
@@ -243,7 +238,6 @@ consonant1 prev = gen C1 prev consonants
 consonant2 prev@(c:_) | needsVowel c = return prev
 consonant2 prev = option pC2 C2 prev consonants
 
-consonant3 :: [String] -> G [String]
 consonant3 prev = option pC3 C3 prev c3Consonants
 
 vowel :: [String] -> G [String]
@@ -264,7 +258,6 @@ word = do len <- randomR (2,5)
       syllables :: Int -> [String] -> G [String]
       syllables 0 accum@(x:_)
           | isVowel x = option pForceTerminalC3 C3 accum terminalConsonants
-          -- | isVowel x = oldOption pForceTerminalC3 accum terminalConsonants
       syllables 0 accum = return accum
       syllables n accum = syllable accum >>= syllables (n-1)
 
