@@ -111,7 +111,8 @@ isApproximant x = x `elem` words "l w r h hw"
 isNasal = (== "n")
 isCompound x = x `elem` words "sr lh ts tsr tθ tlh kx"
 -- allowed to terminate a syllable
-isTerminal x = isStop x || x `elem` words "l x s θ"
+isTerminal = not . needsVowel
+--isTerminal x = isStop x || x `elem` words "l x s θ"
 
 isRepeat :: String -> String -> Bool
 isRepeat a b = a == b || startsWith a b
@@ -188,7 +189,7 @@ consonants = merge [(5, stops),
                     (3, approximants)]
 
 terminalConsonants = freqs [(4,"t"), (1.5,"k"), (2,"p"), (4,"n"),
-                            (3,"l"), (2, "x")]
+                            (3,"l"), (2, "x"), (2, "s"), (2, "θ")]
 
 after :: [String] -> Freq String -> Freq String
 after ctx f = filter (allowedAfter ctx) f
@@ -236,8 +237,7 @@ vowel prev = do v <- sample vowels
                 pure ((if postR then (v'++"r") else v') : prev)
 
 postVowel :: [String] -> G [String]
---postVowel prev = option pPostVowel prev terminalConsonants
-postVowel prev = option pPostVowel prev $ filter (not . needsVowel) consonants
+postVowel prev = option pPostVowel prev $ filter isTerminal consonants
 
 word :: G String
 word = do len <- randomR (2,5)
